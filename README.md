@@ -37,9 +37,12 @@ Unit Tests:
 
 Running Locally: 
 
+    Localhost 8545 Network
+
     npx hardhat node
     npx hardhat compile
-    npx hardhat run scripts/deploy.js --network localhost
+
+    npx hardhat run scripts/deploy.js
 
     yarn run start -> localhost:3000
 
