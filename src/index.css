@@ -2,3 +2,4 @@
 @tailwind components;
 @tailwind utilities;
 
+.rangeslider__fill { background-color: #079669 !important }

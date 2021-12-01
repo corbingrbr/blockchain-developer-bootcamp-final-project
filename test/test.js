@@ -4,11 +4,27 @@ const { ethers } = require("hardhat");
 
 const toReadableNumber = (big_number) => (+ethers.utils.formatEther(big_number)).toFixed(4)
 
-describe("NFTMarket", function () {
+describe("NFTreeMarket", function () {
+
+    it("Should only allow owner to update listing price", async function () {
+        /* deploy the marketplace */
+        const Market = await ethers.getContractFactory("NFTreeMarket")
+        const market = await Market.deploy();
+        await market.deployed();
+
+        const [_, nonOwner] = await ethers.getSigners()
+
+        const UPDATED_LISTING_PRICE = ethers.utils.parseUnits('1', 'ether');
+
+        await expect(market.connect(nonOwner).updateListingPrice(UPDATED_LISTING_PRICE)).to.be.revertedWith("Ownable: caller is not the owner");
+
+        await market.updateListingPrice(UPDATED_LISTING_PRICE);
+        expect(await market.getListingPrice()).to.equal(UPDATED_LISTING_PRICE);
+    })
 
     it("Should calculate royalties", async function () {
         /* deploy the marketplace */
-        const Market = await ethers.getContractFactory("NFTMarket")
+        const Market = await ethers.getContractFactory("NFTreeMarket")
         const market = await Market.deploy()
         await market.deployed()
 
@@ -19,7 +35,7 @@ describe("NFTMarket", function () {
 
     it("Should fail if provided royalty rates exceeds 10000", async function () {
         // deploy the marketplace
-        const Market = await ethers.getContractFactory("NFTMarket")
+        const Market = await ethers.getContractFactory("NFTreeMarket")
         const market = await Market.deploy()
         await market.deployed()
         const marketAddress = market.address
@@ -40,7 +56,7 @@ describe("NFTMarket", function () {
         const BAD_ROYALTY_RATE = 20000; // 50%
 
         // create two tokens
-        await nft.connect(artistAAddress).createToken("https://www.mytokenlocation.com")
+        await nft.connect(artistAAddress).createToken("https://www.tokenuri.com")
 
         // Create parent marketItem
         await expect(market.connect(artistAAddress).createMarketItem(nftContractAddress, 1, auctionPrice, 0, BAD_ROYALTY_RATE, true, GOOD_ROYALTY_RATE, GOOD_ROYALTY_RATE, { value: listingPrice.toString() }))
@@ -56,7 +72,7 @@ describe("NFTMarket", function () {
 
     it("Should fail if provided parentItemId does not exist", async function () {
         // deploy the marketplace
-        const Market = await ethers.getContractFactory("NFTMarket")
+        const Market = await ethers.getContractFactory("NFTreeMarket")
         const market = await Market.deploy()
         await market.deployed()
         const marketAddress = market.address
@@ -79,7 +95,7 @@ describe("NFTMarket", function () {
         const CHILD_MIN_ROYALTY_RATE = 500; // 5%
 
         // create two tokens
-        await nft.connect(artistAAddress).createToken("https://www.mytokenlocation.com")
+        await nft.connect(artistAAddress).createToken("https://www.tokenuri.com")
 
         // Create parent marketItem
         await expect(market.connect(artistAAddress).createMarketItem(nftContractAddress, 1, auctionPrice, 4, ARTIST_A_ROYALTY_RATE, true, CHILD_MIN_ROYALTY_RATE, ARTIST_A_CHILD_ROYALTY_RATE, { value: listingPrice.toString() }))
@@ -88,7 +104,7 @@ describe("NFTMarket", function () {
 
     it("Should create and execute market sales", async function () {
         // deploy the marketplace
-        const Market = await ethers.getContractFactory("NFTMarket")
+        const Market = await ethers.getContractFactory("NFTreeMarket")
         const market = await Market.deploy()
         await market.deployed()
         const marketAddress = market.address
@@ -105,8 +121,8 @@ describe("NFTMarket", function () {
         const auctionPrice = ethers.utils.parseUnits('1', 'ether')
 
         // create two tokens 
-        await nft.createToken("https://www.mytokenlocation.com")
-        await nft.createToken("https://www.mytokenlocation2.com")
+        await nft.createToken("https://www.tokenuri.com")
+        await nft.createToken("https://www.tokenuri2.com")
 
         // put both tokens for sale 
         await market.createMarketItem(nftContractAddress, 1, auctionPrice, 0, 0, true, 0, 0, { value: listingPrice })
@@ -131,7 +147,7 @@ describe("NFTMarket", function () {
     it("Should fail if a child's royalty rate provided for create market item is less than required by parent", async function () {
 
         // deploy the marketplace
-        const Market = await ethers.getContractFactory("NFTMarket")
+        const Market = await ethers.getContractFactory("NFTreeMarket")
         const market = await Market.deploy()
         await market.deployed()
         const marketAddress = market.address
@@ -157,8 +173,8 @@ describe("NFTMarket", function () {
         const CHILD_MIN_ROYALTY_RATE = 500; // 5%
 
         // create two tokens
-        await nft.connect(artistAAddress).createToken("https://www.mytokenlocation.com")
-        await nft.connect(artistBAddress).createToken("https://www.mytokenlocation2.com")
+        await nft.connect(artistAAddress).createToken("https://www.tokenuri.com")
+        await nft.connect(artistBAddress).createToken("https://www.tokenuri2.com")
 
         // Create parent marketItem
         await market.connect(artistAAddress).createMarketItem(nftContractAddress, 1, auctionPrice, 0, ARTIST_A_ROYALTY_RATE, true, CHILD_MIN_ROYALTY_RATE, ARTIST_A_CHILD_ROYALTY_RATE, { value: listingPrice.toString() })
@@ -170,7 +186,7 @@ describe("NFTMarket", function () {
 
     it("Should create a NFTree with one child and when market sale of child, parent receives proper royalties", async function () {
         // deploy the marketplace
-        const Market = await ethers.getContractFactory("NFTMarket")
+        const Market = await ethers.getContractFactory("NFTreeMarket")
         const market = await Market.deploy()
         await market.deployed()
         const marketAddress = market.address
@@ -199,8 +215,8 @@ describe("NFTMarket", function () {
         const HUNDRED_PERCENT = 10000; // 100%
 
         // create two tokens
-        await nft.connect(artistAAddress).createToken("https://www.mytokenlocation.com")
-        await nft.connect(artistBAddress).createToken("https://www.mytokenlocation2.com")
+        await nft.connect(artistAAddress).createToken("https://www.tokenuri.com")
+        await nft.connect(artistBAddress).createToken("https://www.tokenuri2.com")
 
         // Create parent marketItem
         await market.connect(artistAAddress).createMarketItem(nftContractAddress, 1, auctionPrice, 0, ARTIST_A_ROYALTY_RATE, true, CHILD_MIN_ROYALTY_RATE, ARTIST_A_CHILD_ROYALTY_RATE, { value: listingPrice.toString() })
@@ -223,7 +239,7 @@ describe("NFTMarket", function () {
 
     it("Should create a NFTree with grandchild and when market sale of grandchild, parent and grandparent receive proper royalties", async function () {
         // deploy the marketplace
-        const Market = await ethers.getContractFactory("NFTMarket")
+        const Market = await ethers.getContractFactory("NFTreeMarket")
         const market = await Market.deploy()
         await market.deployed()
         const marketAddress = market.address
@@ -254,9 +270,9 @@ describe("NFTMarket", function () {
         const HUNDRED_PERCENT = 10000; // 100%
 
         // create two tokens
-        await nft.connect(artistAAddress).createToken("https://www.mytokenlocation.com")
-        await nft.connect(artistBAddress).createToken("https://www.mytokenlocation2.com")
-        await nft.connect(artistCAddress).createToken("https://www.mytokenlocation3.com")
+        await nft.connect(artistAAddress).createToken("https://www.tokenuri.com")
+        await nft.connect(artistBAddress).createToken("https://www.tokenuri2.com")
+        await nft.connect(artistCAddress).createToken("https://www.tokenuri3.com")
 
         // Create parent marketItem
         await market.connect(artistAAddress).createMarketItem(nftContractAddress, 1, auctionPrice, 0, ARTIST_A_ROYALTY_RATE, true, CHILD_MIN_ROYALTY_RATE, ARTIST_A_CHILD_ROYALTY_RATE, { value: listingPrice.toString() })

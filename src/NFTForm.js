@@ -2,61 +2,76 @@ import { Fragment, useState } from 'react'
 import { Dialog, Transition } from '@headlessui/react'
 import { ethers } from "ethers";
 import { create as ipfsHttpClient } from 'ipfs-http-client'
+import PercentSlider from './PercentSlider'
 
 import {
-  nftaddress, nftmarketaddress
+  nftaddress, nftreemarketaddress
 } from './config'
 
 import NFT from './artifacts/contracts/NFT.sol/NFT.json'
-import NFTMarket from './artifacts/contracts/NFTMarket.sol/NFTMarket.json'
+import NFTreeMarket from './artifacts/contracts/NFTreeMarket.sol/NFTreeMarket.json'
 
 
 const client = ipfsHttpClient('https://ipfs.infura.io:5001/api/v0')
 
-export default function NFTForm({ open, setOpen, parentItem, setParentItem }) {
+export default function NFTForm({ setOpen, parentItem, setParentItem, loadNFTs, setAlert }) {
+
+
+  const min_percent = parentItem ? parentItem.child_min_royalty_rate / 100 : 0;
+
+  const defaultState = { name: "", description: "", price: "0", royalty_rate: min_percent, allow_children: false, child_min_royalty_rate: min_percent, child_royalty_rate: 0 };
 
   const [fileUrl, setFileUrl] = useState(null)
-  const [formInput, updateFormInput] = useState({ name: "", description: "", price: "0", royalty_rate: "0", allow_children: false, child_min_royalty_rate: "0", child_royalty_rate: "0" })
+  const [formInput, updateFormInput] = useState(defaultState)
+  const [uploadingImage, setUploadingImage] = useState(false);
 
 
   async function onFileUpload(e) {
+
+    setUploadingImage(true);
     const file = e.target.files[0]
     try {
       const added = await client.add(
         file,
         {
-          progress: (prog) => console.log(`received: ${prog}`)
+          progress: (prog) => console.log(`File Upload Received: ${prog}`)
         }
       )
       const url = `https://ipfs.infura.io/ipfs/${added.path}`
-      console.log("file upload successful", added)
+
       setFileUrl(url)
-    } catch (error) {
-      console.log('Error uploading file: ', error)
+    } catch (err) {
+      setAlert({ isSuccess: false, message: err.message })
     }
+
+    setUploadingImage(false);
   }
 
-  async function createMarketItem() {
-    console.log("inside createMarketItem")
+  async function listMarketItem() {
 
     const { name, description, price, royalty_rate, allow_children, child_min_royalty_rate, child_royalty_rate } = formInput
-    if (!name || !description || !price || !fileUrl || !royalty_rate || (allow_children && (!child_min_royalty_rate || !child_royalty_rate))) return
+
+    if (!name || !description || !price || !fileUrl || !royalty_rate || (allow_children && (!child_min_royalty_rate || !child_royalty_rate))) {
+      return false;
+    }
 
     // first, upload to IPFS 
     const data = JSON.stringify({
-      name, description, image: fileUrl
+      name, description, image: fileUrl, depth: parentItem ? parentItem.depth + 1 : 0
     })
     try {
       const added = await client.add(data)
       const url = `https://ipfs.infura.io/ipfs/${added.path}`
       // after file is uploaded to IPFS, pass the URL to save it on Polygon 
-      createSale(url)
-    } catch (error) {
-      console.log('Error uploading file: ', error)
+      createMarketItem(url)
+    } catch (err) {
+      setAlert({ isSucess: false, message: err.message })
     }
+
+    return true;
   }
 
-  async function createSale(url) {
+  async function createMarketItem(url) {
     const provider = new ethers.providers.Web3Provider(window.ethereum, "any");
 
     const signer = provider.getSigner()
@@ -70,31 +85,37 @@ export default function NFTForm({ open, setOpen, parentItem, setParentItem }) {
     let tokenId = value.toNumber()
 
     // then list the item for sale on the marketplace 
-    contract = new ethers.Contract(nftmarketaddress, NFTMarket.abi, signer)
+    contract = new ethers.Contract(nftreemarketaddress, NFTreeMarket.abi, signer)
+
     let listingPrice = await contract.getListingPrice()
-    listingPrice = listingPrice.toString()
 
     const { price, royalty_rate, allow_children, child_min_royalty_rate, child_royalty_rate } = formInput
 
-    console.log("createmarketItem", nftaddress, tokenId, price, parentItem, royalty_rate, allow_children, child_min_royalty_rate, child_royalty_rate);
+    try {
+      transaction = await contract.createMarketItem(
+        nftaddress,
+        tokenId,
+        ethers.utils.parseUnits(price, 'ether'),
+        parentItem ? parentItem.itemId : 0,
+        royalty_rate * 100,
+        allow_children,
+        child_min_royalty_rate * 100,
+        child_royalty_rate * 100,
+        { value: listingPrice.toString() }
+      )
 
-    transaction = await contract.createMarketItem(
-      nftaddress,
-      tokenId,
-      ethers.utils.parseUnits(price, 'ether'),
-      parentItem ? parentItem.itemId : 0,
-      parseInt(royalty_rate),
-      allow_children,
-      parseInt(child_min_royalty_rate),
-      parseInt(child_royalty_rate),
-      { value: listingPrice }
-    )
+      await transaction.wait()
 
-    await transaction.wait()
+      loadNFTs();
+    } catch (err) {
+      setAlert({ isSuccess: false, message: err.message })
+    }
+
+    return true;
   }
 
   return (
-    <Transition.Root show={open} as={Fragment}>
+    <Transition.Root show={true} as={Fragment}>
       <Dialog as="div" className="fixed z-10 inset-0 overflow-y-auto" onClose={() => { setOpen(false); setParentItem(null); }}>
         <div className="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
           <Transition.Child
@@ -127,7 +148,7 @@ export default function NFTForm({ open, setOpen, parentItem, setParentItem }) {
                 <div className="sm:flex sm:items-start">
                   <div className="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left">
                     <Dialog.Title as="h3" className="text-lg leading-6 font-medium text-gray-900">
-                      Create a NFTree
+                      {parentItem ? "Create a Branch" : "Create a Root"}
                     </Dialog.Title>
                     <div className="mt-2">
                       <form className="space-y-8 divide-y divide-gray-200">
@@ -168,20 +189,17 @@ export default function NFTForm({ open, setOpen, parentItem, setParentItem }) {
                               </div>
                             </div>
 
-                            <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:items-start sm:border-t sm:border-gray-200 sm:pt-5">
+                            <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:items-start sm:border-t sm:pt-5">
                               <label htmlFor="cover-photo" className="block text-sm font-medium text-gray-700 sm:mt-px sm:pt-2">
                                 Media
                               </label>
                               <div className="mt-1 sm:mt-0 sm:col-span-2">
-                                <div className="max-w-lg flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-md">
-
-
-
+                                <div className={`max-w-lg flex justify-center px-6 pt-5 pb-6 border-2 ${uploadingImage ? "sm:border-green-600 animate-pulse" : "sm:border-gray-300"} border-dashed rounded-md`}>
 
                                   <div className="space-y-1 text-center">
                                     <svg
-                                      className="mx-auto h-12 w-12 text-gray-400"
-                                      stroke="currentColor"
+                                      className={`mx-auto h-12 w-12 ${uploadingImage ? "animate-pulse text-green-600" : "text-gray-400"}`}
+                                      stroke={uploadingImage ? "#079669" : "currentColor"}
                                       fill="none"
                                       viewBox="0 0 48 48"
                                       aria-hidden="true"
@@ -195,7 +213,7 @@ export default function NFTForm({ open, setOpen, parentItem, setParentItem }) {
                                     </svg>
 
 
-                                    {fileUrl && (<p>{fileUrl.length > 20 ? `${fileUrl.slice(0, 6)}...${fileUrl.slice(fileUrl.length - 4, fileUrl.length)}` : fileUrl}</p>)}
+                                    {fileUrl && (<p className="text-green-600">{fileUrl.length > 20 ? `${fileUrl.slice(0, 6)}...${fileUrl.slice(fileUrl.length - 4, fileUrl.length)}` : fileUrl}</p>)}
 
                                     <div className="flex text-sm text-gray-600">
                                       <label
@@ -238,14 +256,7 @@ export default function NFTForm({ open, setOpen, parentItem, setParentItem }) {
                                 Royalty Rate
                               </label>
                               <div className="mt-1 sm:mt-0 sm:col-span-2">
-                                <input
-                                  type="text"
-                                  name="royalty-rate"
-                                  id="royalty-rate"
-                                  autoComplete="royalty-rate"
-                                  className="max-w-lg block w-full shadow-sm focus:ring-green-600 focus:border-green-600 sm:max-w-xs sm:text-sm border-gray-300 rounded-md"
-                                  onChange={e => updateFormInput({ ...formInput, royalty_rate: e.target.value })}
-                                />
+                                <PercentSlider handleChange={value => updateFormInput({ ...formInput, royalty_rate: value })} percent={formInput.royalty_rate} min={parentItem ? parentItem.child_min_royalty_rate / 100 : 0} />
                               </div>
                             </div>
 
@@ -272,32 +283,20 @@ export default function NFTForm({ open, setOpen, parentItem, setParentItem }) {
                                         Branch Minimum Royalty Requirement
                                       </label>
                                       <div className="mt-1 sm:mt-0 ">
-                                        <input
-                                          type="text"
-                                          name="child-royalty-limit"
-                                          id="child-royalty-limit"
-                                          autoComplete="child-royalty-rate"
-                                          className="max-w-lg block w-full shadow-sm focus:ring-green-600 focus:border-green-600 sm:max-w-xs sm:text-sm border-gray-300 rounded-md"
-                                          onChange={e => updateFormInput({ ...formInput, child_min_royalty_rate: e.target.value })}
-                                        />
+                                        <PercentSlider handleChange={value => updateFormInput({ ...formInput, child_min_royalty_rate: value })} percent={formInput.child_min_royalty_rate} min={parentItem ? parentItem.child_min_royalty_rate / 100 : 0} />
                                         <p className="mt-2 text-sm text-gray-500">A minimum royalty that branches must list with</p>
                                       </div>
                                     </div>
 
-                                    <div className="col-span-2">
+                                    <div className="col-span-2 sm:border-t">
                                       <label htmlFor="child-royalty-rate" className="block text-sm font-medium text-gray-700 sm:mt-px sm:pt-2">
                                         Branch Royalty Rate
                                       </label>
                                       <div className="mt-1 sm:mt-0 ">
-                                        <input
-                                          type="text"
-                                          name="child-royalty-limit"
-                                          id="child-royalty-limit"
-                                          autoComplete="child-royalty-rate"
-                                          className="max-w-lg block w-full shadow-sm focus:ring-green-600 focus:border-green-600 sm:max-w-xs sm:text-sm border-gray-300 rounded-md"
-                                          onChange={e => updateFormInput({ ...formInput, child_royalty_rate: e.target.value })}
-                                        />
+                                        <PercentSlider handleChange={value => updateFormInput({ ...formInput, child_royalty_rate: value })} percent={formInput.child_royalty_rate} min={0} />
                                         <p className="mt-2 text-sm text-gray-500">The percentage of branch royalties you desire</p>
+
+
                                       </div>
                                     </div>
 
@@ -321,11 +320,11 @@ export default function NFTForm({ open, setOpen, parentItem, setParentItem }) {
                 <button
                   type="button"
                   className="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-green-600 text-base font-medium text-white hover:bg-green-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 sm:ml-3 sm:w-auto sm:text-sm"
-                  onClick={() => {
-                    ("I should be creating market item now")
-                    createMarketItem();
-                    setOpen(false);
-                    setParentItem(null);
+                  onClick={async () => {
+                    if (await listMarketItem()) {
+                      setOpen(false);
+                      setParentItem(null);
+                    }
                   }}
                 >
                   Create

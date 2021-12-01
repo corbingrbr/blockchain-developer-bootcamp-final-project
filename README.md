@@ -1,25 +1,43 @@
-I recently was browsing OpenSea, the NFT site, for the first time and became acquainted with it a bit. I understood the concept of NFT's prior to this, however I was unaware of the ability to add a royalty fee to your work which I found to be a great feature for an artist to be able to capture value for their work post original sale.
+Project Description:
+    
+    My idea for this project was to create a simple NFT market which had the potential to develop tree-like relationships amongst its tokens. I liked this concept because it pays homage to the idea that art is collaborative in nature, and that one piece is often the product of experiencing another. These tree-like relationships would also then allow me explore the percolation of royalty payments among related ancestor tokens after a token sale.
 
-This got me thinking of how royalties might work if there were to be several artists that collabed on the same piece of art, or the scenario where one artist signals their work is open to other peoples collaboration upon the condition that they receive royalities for the source material. This would create an interesting tree structure of royalty payouts I'd like to explore.
+    The way this works: user starts on the homepage and will have a view of all unsold market items. From here they can either purchase a nft, create their own, or branch an existing one. The first two are standard for nft markets. The third was the item I explored with this project. To branch an nft, the user clicks the Branch' button at the bottom of a token card, if present, and uploads their extended/customized piece along with other details such as royalty and name. Upon the listing, the market identifies this item as a child of another and when it is ultimately purchased, its royalties gained from the sale are distributed to its ancestors based upon royalty configurations dictated by those listings.
 
-Typical user scenario:
+Directory Structure:
 
-1. Original artistA creates art and uploads it with a config for royalties, price, and collaboration details 
-{ collabIsAllowed : boolean, collabDepthAllowed?: number, royalties: number}.
+    This follows the standard structure of a hardhat setup. The only nuance being that artifacts are placed inside the src dir to provide the front end access to the abi's.
 
-2. The original artistA will have an EOA for sales and royalties.
+    contracts - solidity Contracts
+    public - static files/images
+    scripts - deploy script
+    src - frontend react files
+    test - test script
 
-3. Should artistA provide the ability for their work to be extended by other artists, a secondhand artistB can access the original art, make their modifications to it and place their collaborative work artB up for sale.
+Installing Dependencies:
 
-4. Any sales of artB made by artistB are payed out to a SmartContractX which will split the sale's profit between the artistB's EOA and artistA's EOA. 
+    yarn install
 
-5. This model can be extended to further depth, creating the tree structure of royalties. A thirdhand artistC can extend the work done by the secondhand artistB and their payable address will be a SmartContractY that divides profit between the artistB's payable address SmartContractX and artistC's EOA.
+Unit Tests:
 
-Two things which potentially concern me regarding this idea are:
-    1. Gas cost estimation, not sure if/when the recursive nature of the payment transaction poses issue
-    2. Call stack size may limit the total height of a collaboration tree when processing transactions.
+    npx hardhat test
 
-Either way, I find this to be quite an exciting way to experience multi transaction operations and a way to explore how artists could collaborate in a decentralized marketplace.
+Running Locally: 
 
+    npx hardhat node
+    npx hardhat compile
+    npx hardhat run scripts/deploy.js --network localhostnpx hardhat deploy
 
+    yarn run start -> localhost:3000
 
+Frontend Project Location:
+
+    !!FILL ME IN AFTER DEPLOYMENT WHEREVER!!
+
+Public Ethereum address:
+
+    0xc88F5B2DDC96d016af31C1b5939d97072300382E
+
+Screencast Link:
+
+    https://www.loom.com/share/c278611602164f2e89bc3266e241f632

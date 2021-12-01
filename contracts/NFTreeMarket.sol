@@ -4,21 +4,25 @@ pragma solidity ^0.8.4;
 import "@openzeppelin/contracts/utils/Counters.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
 
 import "hardhat/console.sol";
 
-contract NFTMarket is ReentrancyGuard {
+/// @title A minimal NFTMarket with tree like properties
+/// @notice You can use this contract for only the most basic simulation
+/// @dev All function calls are currently implemented without side effects
+/// @custom:experimental This is an experimental contract.
+contract NFTreeMarket is Ownable, ReentrancyGuard {
     using Counters for Counters.Counter;
     Counters.Counter private _itemIds;
     Counters.Counter private _itemsSold;
 
-    address payable owner;
+    /// The owner of the market
+    //address payable owner;
+    /// The price required to list an item on the market
     uint256 listingPrice = 0.0025 ether;
 
-    constructor() {
-        owner = payable(msg.sender);
-    }
-
+    /// Details we keep per each market item
     struct MarketItem {
         uint256 itemId;
         address nftContract;
@@ -27,7 +31,6 @@ contract NFTMarket is ReentrancyGuard {
         address payable owner;
         uint256 price;
         bool sold;
-        //
         address payable creator;
         uint256 parentItemId;
         uint256 royalty_rate;
@@ -38,28 +41,35 @@ contract NFTMarket is ReentrancyGuard {
 
     mapping(uint256 => MarketItem) private idToMarketItem;
 
-    event MarketItemCreated(
-        uint256 indexed itemId,
-        address indexed nftContract,
-        uint256 indexed tokenId,
-        address seller,
-        address owner,
-        uint256 price,
-        bool sold,
-        address creator,
-        uint256 parenItemId,
-        uint256 royalty_rate,
-        bool allow_children,
-        uint256 child_min_royalty_rate,
-        uint256 child_royalty_rate
-    );
+    function updateListingPrice(uint256 newListingPrice) public onlyOwner {
+        listingPrice = newListingPrice;
+    }
 
-    /* Returns the listing price of the contract */
+    /// @notice Returns the price set by the market owner to list a market item
+    /// @return Required price to list on the market
     function getListingPrice() public view returns (uint256) {
         return listingPrice;
     }
 
-    /* Places an item for sale on the marketplace */
+    /// @notice Logs the listing of a market item
+    /// @dev Seller is indexed for listener filters on the front end to inform user their token has been listed
+    event MarketItemCreated(
+        address indexed seller,
+        uint256 itemId,
+        address nftContract,
+        uint256 tokenId
+    );
+
+    /// @notice Creates a market item and transfers ownership of it to the market
+    /// @dev Emits MarketItemCreated event
+    /// @param nftContract The contract address for the nft tokens
+    /// @param tokenId The identification for token to listed on the market
+    /// @param price The price at which the token will be listed for on the market
+    /// @param parentItemId The parent market item identifier if this token extends another
+    /// @param royalty_rate The value to be extracted from sales
+    /// @param allow_children Whether this token allows others to branch off it
+    /// @param child_min_royalty_rate The required royalty rate of children when listing
+    /// @param child_royalty_rate The percentage desired of child royalties
     function createMarketItem(
         address nftContract,
         uint256 tokenId,
@@ -84,6 +94,11 @@ contract NFTMarket is ReentrancyGuard {
         require(
             parentItemId <= _itemIds.current(),
             "parentItemId specified for this create market item does not exist"
+        );
+
+        require(
+            parentItemId == 0 || idToMarketItem[parentItemId].allow_children,
+            "parent does not allow children market items"
         );
 
         require(
@@ -124,31 +139,27 @@ contract NFTMarket is ReentrancyGuard {
 
         IERC721(nftContract).transferFrom(msg.sender, address(this), tokenId);
 
-        emit MarketItemCreated(
-            itemId,
-            nftContract,
-            tokenId,
-            msg.sender,
-            address(0),
-            price,
-            false,
-            msg.sender,
-            parentItemId,
-            royalty_rate,
-            allow_children,
-            child_min_royalty_rate,
-            child_royalty_rate
-        );
+        emit MarketItemCreated(msg.sender, itemId, nftContract, tokenId);
     }
 
-    function calcRoyalties(uint256 total, uint256 royalty_rate)
+    /// @notice Calculates a proportion of a total given a royalty_rate
+    /// @dev 10000 is used to allow for two decimals
+    /// @param total The amount we are trying to find a portion of
+    /// @param percentage The percentage which will be multiplied with the total to find a sub-portion
+    /// @return royalties The product of percentage and total
+    function calcRoyalties(uint256 total, uint256 percentage)
         public
         pure
         returns (uint256 royalties)
     {
-        return (total * royalty_rate) / 10000;
+        return (total * percentage) / 10000;
     }
 
+    /// @notice Percolates royalties up the tree recursively
+    /// @dev Could be a source of call reversion if gas provided doesn't account for depth
+    /// @param royalties The amount still to be distributed
+    /// @param parentItemId The parent item identifier with respect to the child
+    /// @param childItemId The child item identifier
     function payoutRoyalties(
         uint256 royalties,
         uint256 parentItemId,
@@ -174,8 +185,22 @@ contract NFTMarket is ReentrancyGuard {
         }
     }
 
+    /// @notice Logs the sale of a market item
+    /// @dev Can use indexed buyer and seller addresses to filter events on frontend.
+    event MarketItemSale(
+        address indexed buyer,
+        address indexed seller,
+        uint256 itemId,
+        address nftContract,
+        uint256 tokenId
+    );
+
     /* Creates the sale of a marketplace item */
     /* Transfers ownership of the item, as well as funds between parties */
+    /// @notice Creates the sale of a marketplace item, and transfers ownership of item, and funds between parties
+    /// @dev Emits a MarketItemSale event upon completion
+    /// @param nftContract The contract address that transfers ownership of the nft from market to buyer
+    /// @param itemId The identifier for which market item is to be sold
     function createMarketSale(address nftContract, uint256 itemId)
         public
         payable
@@ -204,26 +229,21 @@ contract NFTMarket is ReentrancyGuard {
         idToMarketItem[itemId].owner = payable(msg.sender);
         idToMarketItem[itemId].sold = true;
         _itemsSold.increment();
-        payable(owner).transfer(listingPrice);
+        payable(owner()).transfer(listingPrice);
+
+        emit MarketItemSale(
+            msg.sender,
+            idToMarketItem[itemId].seller,
+            itemId,
+            nftContract,
+            tokenId
+        );
     }
-
-    /*
-    function getMarketItemAcenstors(uint256 tokenId) public view returns (MarketItem[] memory) {
-        MarketItem cur_item = idToMarketItem[tokenId];
-        uint8 depth = cur_item.depth;
-
-        MarketItem[] ancestors = new MarketItem[](depth);
-
-        while (depth > 0) {
-            ancestors[depth-1] = idToMarketItem[cur_item.parentTokenId];
-            depth--;
-        }
-
-        return ancestors;
-    }
-    */
 
     /* Returns all unsold market items */
+    /// @notice Fetches all unsold items listed on the market
+    /// @dev Used to populate front end with available items for purchase and extension.
+    /// @return Set of unsold MarketItems
     function fetchMarketItems() public view returns (MarketItem[] memory) {
         uint256 itemCount = _itemIds.current();
         uint256 unsoldItemCount = _itemIds.current() - _itemsSold.current();
@@ -240,56 +260,4 @@ contract NFTMarket is ReentrancyGuard {
         }
         return items;
     }
-
-    /* Returns only items that a user has purchased */
-    /* 
-    function fetchMyNFTs() public view returns (MarketItem[] memory) {
-        uint256 totalItemCount = _itemIds.current();
-        uint256 itemCount = 0;
-        uint256 currentIndex = 0;
-
-        for (uint256 i = 0; i < totalItemCount; i++) {
-            if (idToMarketItem[i + 1].owner == msg.sender) {
-                itemCount += 1;
-            }
-        }
-
-        MarketItem[] memory items = new MarketItem[](itemCount);
-        for (uint256 i = 0; i < totalItemCount; i++) {
-            if (idToMarketItem[i + 1].owner == msg.sender) {
-                uint256 currentId = i + 1;
-                MarketItem storage currentItem = idToMarketItem[currentId];
-                items[currentIndex] = currentItem;
-                currentIndex += 1;
-            }
-        }
-        return items;
-    }
-    */
-
-    /* Returns only items a user has created */
-    /*
-    function fetchItemsCreated() public view returns (MarketItem[] memory) {
-        uint256 totalItemCount = _itemIds.current();
-        uint256 itemCount = 0;
-        uint256 currentIndex = 0;
-
-        for (uint256 i = 0; i < totalItemCount; i++) {
-            if (idToMarketItem[i + 1].seller == msg.sender) {
-                itemCount += 1;
-            }
-        }
-
-        MarketItem[] memory items = new MarketItem[](itemCount);
-        for (uint256 i = 0; i < totalItemCount; i++) {
-            if (idToMarketItem[i + 1].seller == msg.sender) {
-                uint256 currentId = i + 1;
-                MarketItem storage currentItem = idToMarketItem[currentId];
-                items[currentIndex] = currentItem;
-                currentIndex += 1;
-            }
-        }
-        return items;
-    }
-    */
 }
