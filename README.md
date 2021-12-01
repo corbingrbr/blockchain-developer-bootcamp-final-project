@@ -21,7 +21,7 @@ Directory Structure:
     The only nuance being that artifacts are placed inside the src dir 
     to provide the front end access to the abi's.
 
-    contracts - solidity Contracts
+    contracts - solidity contracts
     public - static files/images
     scripts - deploy script
     src - frontend react files
@@ -45,7 +45,7 @@ Running Locally:
 
 Frontend Project Location:
 
-    !!FILL ME IN AFTER DEPLOYMENT WHEREVER!!
+    https://nftreez.netlify.app/
 
 Public Ethereum address:
 
